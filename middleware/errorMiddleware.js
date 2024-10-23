@@ -1,4 +1,4 @@
-import AppError from "./../utils/appError.js";
+import AppError from "../utils/appError.js";
 
 const handleCastErrorDB = (err) => {
 	const message = `Invalid ${err.path}: ${err.value}.`;
@@ -6,10 +6,10 @@ const handleCastErrorDB = (err) => {
 };
 
 const handleDuplicateFieldsDB = (err) => {
-	const value = err.err.match(/(["'])(\\?.)*?\1/)[0];
-	console.log(value);
+	const value = Object.keys(err.keyValue)[0];
+	const field = err.keyValue[value];
 
-	const message = `Duplicate field value: ${value}. Please use another value!`;
+	const message = `Duplicate field value: ${value} with value ${field} Please use another value!`;
 	return new AppError(message, 400);
 };
 
@@ -37,6 +37,7 @@ const sendErrorDev = (err, res) => {
 
 const sendErrorProd = (err, res) => {
 	// Operational, trusted error: send message to client
+	// console.log("prodError", err);
 	if (err.isOperational) {
 		res.status(err.statusCode).json({
 			status: err.status,
@@ -57,7 +58,7 @@ const sendErrorProd = (err, res) => {
 };
 
 export default (err, req, res, next) => {
-	// console.log(err.stack);
+	// console.log("globalError", err);
 
 	err.statusCode = err.statusCode || 500;
 	err.status = err.status || "error";
@@ -65,15 +66,13 @@ export default (err, req, res, next) => {
 	if (process.env.NODE_ENV === "development") {
 		sendErrorDev(err, res);
 	} else if (process.env.NODE_ENV === "production") {
-		let error = { ...err };
+		console.log("err", err);
+		if (err.name === "CastError") err = handleCastErrorDB(err);
+		if (err.code === 11000) err = handleDuplicateFieldsDB(err);
+		if (err.name === "ValidationError") err = handleValidationErrorDB(err);
+		if (err.name === "JsonWebTokenError") err = handleJWTError();
+		if (err.name === "TokenExpiredError") err = handleJWTExpiredError();
 
-		if (error.name === "CastError") error = handleCastErrorDB(error);
-		if (error.code === 11000) error = handleDuplicateFieldsDB(error);
-		if (error.name === "ValidationError")
-			error = handleValidationErrorDB(error);
-		if (error.name === "JsonWebTokenError") error = handleJWTError();
-		if (error.name === "TokenExpiredError") error = handleJWTExpiredError();
-
-		sendErrorProd(error, res);
+		sendErrorProd(err, res);
 	}
 };
